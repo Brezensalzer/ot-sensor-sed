@@ -1,0 +1,47 @@
+// Serial over USB
+/ {
+	chosen {
+			zephyr,shell-uart = &cdc_acm_uart0;
+			//zephyr,console = &cdc_acm_uart0;
+			zephyr,i2c = &i2c0;
+	};
+};
+
+&zephyr_udc0 {
+	cdc_acm_uart0: cdc_acm_uart0 {
+			compatible = "zephyr,cdc-acm-uart";
+			label = "CDC_ACM_0";
+	};
+};
+
+// remapping i2c0 pins to something useful
+&pinctrl {
+    i2c0_default: i2c0_default {
+        group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 13)>,
+					<NRF_PSEL(TWIM_SCL, 0, 15)>;            
+        };
+    };
+	i2c0_sleep: i2c0_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 13)>,
+					<NRF_PSEL(TWIM_SCL, 0, 15)>;
+		};
+	};
+};
+
+// activating the i2c0 bus and define the
+// bme280 sensor in the device tree
+&i2c0 {
+	compatible = "nordic,nrf-twi";
+	status = "okay";
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-1 = <&i2c0_sleep>;
+	pinctrl-names = "default", "sleep";
+	bme280: bme280@76 {
+		/* 0x76 - SDO <-> GND */
+		/* 0x77 - SDO <-> VCC */
+		compatible = "bosch,bme280";
+		reg = <0x76>;
+	};	
+};

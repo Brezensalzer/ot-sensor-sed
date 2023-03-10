@@ -1,17 +1,20 @@
 /*
- * thread_cli demo program
+ * OpenThread Sensor Node
+ * Sleepy End Device
  */
-#include <zephyr/device.h>
 #include <zephyr/kernel.h>
-
-#include <openthread/thread.h>
-#include <openthread/udp.h>
-
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/gpio.h>
 #include <stdio.h>
+
+#include <openthread/thread.h>
+#include <openthread/udp.h>
+
+#include <zephyr/pm/pm.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/pm/policy.h>
 
 // #define DEBUG
 #ifdef DEBUG
@@ -149,8 +152,8 @@ void main(void)
 	k_sleep(K_SECONDS(1));
 
 	// BME280 sensor
-	const struct device *dev = get_bme280_device();
-	if (dev == NULL) {
+	const struct device *i2c_dev = get_bme280_device();
+	if (i2c_dev == NULL) {
 		return;
 	}
 	err = gpio_pin_toggle_dt(&led);
@@ -168,10 +171,10 @@ void main(void)
 		//------------------------------------
 		struct sensor_value temp, press, humidity;
 
-		sensor_sample_fetch(dev);
-		sensor_channel_get(dev, SENSOR_CHAN_AMBIENT_TEMP, &temp);
-		sensor_channel_get(dev, SENSOR_CHAN_PRESS, &press);
-		sensor_channel_get(dev, SENSOR_CHAN_HUMIDITY, &humidity);
+		sensor_sample_fetch(i2c_dev);
+		sensor_channel_get(i2c_dev, SENSOR_CHAN_AMBIENT_TEMP, &temp);
+		sensor_channel_get(i2c_dev, SENSOR_CHAN_PRESS, &press);
+		sensor_channel_get(i2c_dev, SENSOR_CHAN_HUMIDITY, &humidity);
 
 		#ifdef DEBUG
 			LOG_INF("temp: %d.%d; press: %d.%d; humidity: %d.%d",
@@ -201,6 +204,9 @@ void main(void)
 		//------------------------------------
 		// go to sleep
 		//------------------------------------
+		// suspend BME280 sensor saves ca. 400µA
+		err = pm_device_action_run(i2c_dev, PM_DEVICE_ACTION_SUSPEND);
 		k_sleep(K_SECONDS(10));
+		err = pm_device_action_run(i2c_dev, PM_DEVICE_ACTION_RESUME);
 	}
 }

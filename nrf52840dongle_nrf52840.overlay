@@ -1,19 +1,18 @@
-// Serial over USB
 / {
 	chosen {
-			zephyr,shell-uart = &cdc_acm_uart0;
-			//zephyr,console = &cdc_acm_uart0;
+			// zephyr,shell-uart = &cdc_acm_uart0;
 			zephyr,i2c = &i2c0;
 	};
 };
-
+/*
+// Serial over USB
 &zephyr_udc0 {
 	cdc_acm_uart0: cdc_acm_uart0 {
 			compatible = "zephyr,cdc-acm-uart";
 			label = "CDC_ACM_0";
 	};
 };
-
+*/
 // remapping i2c0 pins to something useful
 &pinctrl {
     i2c0_default: i2c0_default {

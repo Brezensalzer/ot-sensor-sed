@@ -3,12 +3,7 @@
  */
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
-#include <zephyr/drivers/uart.h>
-#include <zephyr/usb/usb_device.h>
-#include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(cdc_acm_echo, LOG_LEVEL_INF);
 
-//#include <net/openthread.h>
 #include <openthread/thread.h>
 #include <openthread/udp.h>
 
@@ -17,6 +12,14 @@ LOG_MODULE_REGISTER(cdc_acm_echo, LOG_LEVEL_INF);
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/gpio.h>
 #include <stdio.h>
+
+// #define DEBUG
+#ifdef DEBUG
+	#include <zephyr/drivers/uart.h>
+	#include <zephyr/usb/usb_device.h>
+	#include <zephyr/logging/log.h>
+	LOG_MODULE_REGISTER(cdc_acm_echo, LOG_LEVEL_INF);
+#endif
 
 // the devicetree node identifier for the "led1_green" alias
 #define LED1_GREEN_NODE DT_ALIAS(led1_green)
@@ -27,6 +30,7 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED1_GREEN_NODE, gpios);
 #endif
 
 const char device_id[] = "D9:28:1F:ED:79:2A";
+
 /*
  * Get a device structure from a devicetree node with compatible
  * "bosch,bme280". (If there are multiple, just pick one.)
@@ -38,14 +42,14 @@ static const struct device *get_bme280_device(void)
 	if (dev == NULL) {
 		/* No such node, or the node does not have status "okay". */
 		#ifdef DEBUG 
-			printk("\nError: no device found.\n");
+			LOG_ERR("\nError: no device found.\n");
 		#endif
 		return NULL;
 	}
 
 	if (!device_is_ready(dev)) {
 		#ifdef DEBUG 
-			printk("\nError: Device \"%s\" is not ready; "
+			LOG_ERR("\nError: Device \"%s\" is not ready; "
 		       		"check the driver initialization logs for errors.\n",
 		       		dev->name);
 		#endif
@@ -53,7 +57,7 @@ static const struct device *get_bme280_device(void)
 	}
 
 	#ifdef DEBUG 
-		printk("Found device \"%s\", getting sensor data\n", dev->name);
+		LOG_INF("Found device \"%s\", getting sensor data\n", dev->name);
 	#endif
 	return dev;
 }
@@ -63,7 +67,6 @@ void udp_send(char *buf)
 //-----------------------------
 {
 	otError ot_error = OT_ERROR_NONE;
-	//const char *buf = "Hello World!";
 	
 	// fetch OpenThread instance and udp_socket
 	otInstance *ot_instance;
@@ -81,29 +84,37 @@ void udp_send(char *buf)
 	do {
 		ot_error = otUdpOpen(ot_instance, &udp_socket, NULL, NULL);
 		if (ot_error != OT_ERROR_NONE) { 
-			LOG_ERR("could not open udp port");
+			#ifdef DEBUG
+				LOG_ERR("could not open udp port");
+			#endif
 			break; 
 		}
 
 		otMessage *json_message = otUdpNewMessage(ot_instance, NULL);
 		ot_error = otMessageAppend(json_message, buf, (uint16_t)strlen(buf));
 		if (ot_error != OT_ERROR_NONE) { 
-			LOG_ERR("could not append message");
+			#ifdef DEBUG
+				LOG_ERR("could not append message");
+			#endif
 			break; 
 		}
 
 		ot_error = otUdpSend(ot_instance, &udp_socket, json_message, &message_info);
 		if (ot_error != OT_ERROR_NONE) { 
-			LOG_ERR("could not send udp message");
+			#ifdef DEBUG
+				LOG_ERR("could not send udp message");
+			#endif
 			break; 
 		}
 
 		ot_error = otUdpClose(ot_instance, &udp_socket);
 	} while(false);
 
-	if (ot_error == OT_ERROR_NONE) { 
-		LOG_INF("udp message sent");
-	}
+	#ifdef DEBUG
+		if (ot_error == OT_ERROR_NONE) { 
+			LOG_INF("udp message sent");
+		}
+	#endif
 }
 
 //-----------------------------
@@ -111,22 +122,24 @@ void main(void)
 //-----------------------------
 {
 	char json_buf[100];
+	int err;
 
-	const struct device *usbdev;
-	uint32_t baudrate, dtr = 0U;
-	int err,ret;
+	#ifdef DEBUG
+		const struct device *usbdev;
+		uint32_t baudrate, dtr = 0U;
 
-	usbdev = DEVICE_DT_GET_ONE(zephyr_cdc_acm_uart);
-	if (!device_is_ready(usbdev)) {
-		LOG_ERR("CDC ACM device not ready");
-		return;
-	}
+		usbdev = DEVICE_DT_GET_ONE(zephyr_cdc_acm_uart);
+		if (!device_is_ready(usbdev)) {
+			LOG_ERR("CDC ACM device not ready");
+			return;
+		}
 
-	ret = usb_enable(NULL);
-	if (ret != 0) {
-		LOG_ERR("Failed to enable USB");
-		return;
-	}
+		ret = usb_enable(NULL);
+		if (ret != 0) {
+			LOG_ERR("Failed to enable USB");
+			return;
+		}
+	#endif
 
 	//-----------------------------
 	// init sensor
@@ -141,7 +154,9 @@ void main(void)
 		return;
 	}
 	err = gpio_pin_toggle_dt(&led);
-	LOG_INF("BME280 Sensor started");
+	#ifdef DEBUG
+		LOG_INF("BME280 Sensor started");
+	#endif
 
 	//-----------------------------
 	// main loop
@@ -158,20 +173,34 @@ void main(void)
 		sensor_channel_get(dev, SENSOR_CHAN_PRESS, &press);
 		sensor_channel_get(dev, SENSOR_CHAN_HUMIDITY, &humidity);
 
-		LOG_INF("temp: %d.%d; press: %d.%d; humidity: %d.%d",
-				temp.val1, temp.val2, press.val1, press.val2,
-				humidity.val1, humidity.val2);
+		#ifdef DEBUG
+			LOG_INF("temp: %d.%d; press: %d.%d; humidity: %d.%d",
+					temp.val1, temp.val2, press.val1, press.val2,
+					humidity.val1, humidity.val2);
+		#endif
 
-		// constructing json message
+		//------------------------------------
+		// construct json message
+		//------------------------------------
 		snprintf(json_buf, sizeof(json_buf),
 			"{ \"id\": \"%s\", \"temp\": %d.%d, \"press\": %d.%d, \"hum\": %d.%d }",
 			device_id, temp.val1, temp.val2, press.val1, press.val2, humidity.val1, humidity.val2);
 
-		LOG_INF("JSON message built");
+		#ifdef DEBUG
+			LOG_INF("JSON message built");
+		#endif
+
+		//------------------------------------
+		// broadcast udp message
+		//------------------------------------
 		udp_send(json_buf);
+
 		// clear json buffer
 		json_buf[0] = "\0";
 
+		//------------------------------------
+		// go to sleep
+		//------------------------------------
 		k_sleep(K_SECONDS(10));
 	}
 }

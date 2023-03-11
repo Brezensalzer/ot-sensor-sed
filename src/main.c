@@ -6,7 +6,6 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/drivers/gpio.h>
 #include <stdio.h>
 
 #include <openthread/thread.h>
@@ -14,7 +13,6 @@
 
 #include <zephyr/pm/pm.h>
 #include <zephyr/pm/device.h>
-#include <zephyr/pm/policy.h>
 
 // #define DEBUG
 #ifdef DEBUG
@@ -24,15 +22,7 @@
 	LOG_MODULE_REGISTER(cdc_acm_echo, LOG_LEVEL_INF);
 #endif
 
-// the devicetree node identifier for the "led1_green" alias
-#define LED1_GREEN_NODE DT_ALIAS(led1_green)
-static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED1_GREEN_NODE, gpios);
-
-#if DT_NODE_HAS_STATUS(LED1_GREEN_NODE, okay)
-#define LED1_GREEN_PIN DT_GPIO_PIN(LED1_GREEN_NODE, gpios)
-#endif
-
-const char device_id[] = "D9:28:1F:ED:79:2A";
+#define SLEEP_TIME 60
 
 /*
  * Get a device structure from a devicetree node with compatible
@@ -127,6 +117,16 @@ void main(void)
 	char json_buf[100];
 	int err;
 
+	uint8_t *eui64;
+	char *eui64_id[11];
+
+	// fetch OpenThread instance and EUI64
+	otInstance *ot_instance;
+	ot_instance = openthread_get_default_instance();
+	otPlatRadioGetIeeeEui64(ot_instance, eui64);
+	snprintf(eui64_id, sizeof(eui64_id),
+			"0x%X\0",&eui64);
+
 	#ifdef DEBUG
 		const struct device *usbdev;
 		uint32_t baudrate, dtr = 0U;
@@ -147,8 +147,8 @@ void main(void)
 	//-----------------------------
 	// init sensor
 	//-----------------------------
-	err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_HIGH);
-	err = gpio_pin_toggle_dt(&led);
+	//err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_HIGH);
+	//err = gpio_pin_toggle_dt(&led);
 	k_sleep(K_SECONDS(1));
 
 	// BME280 sensor
@@ -156,7 +156,7 @@ void main(void)
 	if (i2c_dev == NULL) {
 		return;
 	}
-	err = gpio_pin_toggle_dt(&led);
+	//err = gpio_pin_toggle_dt(&led);
 	#ifdef DEBUG
 		LOG_INF("BME280 Sensor started");
 	#endif
@@ -186,8 +186,8 @@ void main(void)
 		// construct json message
 		//------------------------------------
 		snprintf(json_buf, sizeof(json_buf),
-			"{ \"id\": \"%s\", \"temp\": %d.%d, \"press\": %d.%d, \"hum\": %d.%d }",
-			device_id, temp.val1, temp.val2, press.val1, press.val2, humidity.val1, humidity.val2);
+			"{ \"id\": \"%s, \"temp\": %d.%d, \"press\": %d.%d, \"hum\": %d.%d }",
+			eui64_id, temp.val1, temp.val2, press.val1, press.val2, humidity.val1, humidity.val2);
 
 		#ifdef DEBUG
 			LOG_INF("JSON message built");
@@ -206,7 +206,7 @@ void main(void)
 		//------------------------------------
 		// suspend BME280 sensor saves ca. 400µA
 		err = pm_device_action_run(i2c_dev, PM_DEVICE_ACTION_SUSPEND);
-		k_sleep(K_SECONDS(10));
+		k_sleep(K_SECONDS(SLEEP_TIME));
 		err = pm_device_action_run(i2c_dev, PM_DEVICE_ACTION_RESUME);
 	}
 }

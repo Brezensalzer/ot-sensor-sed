@@ -6,3 +6,5 @@ After struggling with the new concepts in Zephyr (device tree and overlay files)
 It broadcasts a JSON datagram with temperature, humidity and air pressure data from a BME280 I2C sensor over UDP and goes to sleep for 60 seconds.
 
 Unsolved mystery: The dongle sucks about 1.6 mA in deep sleep, but it should be about 5µA.
+
+* Changed the sensor to an Infineon SHT40. Power consumption is now down to 600µA - still way to much.

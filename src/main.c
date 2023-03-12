@@ -6,6 +6,8 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/sensor/sht4x.h>
 #include <stdio.h>
 
 #include <openthread/thread.h>
@@ -14,7 +16,7 @@
 #include <zephyr/pm/pm.h>
 #include <zephyr/pm/device.h>
 
-// #define DEBUG
+#define DEBUG
 #ifdef DEBUG
 	#include <zephyr/drivers/uart.h>
 	#include <zephyr/usb/usb_device.h>
@@ -22,38 +24,23 @@
 	LOG_MODULE_REGISTER(cdc_acm_echo, LOG_LEVEL_INF);
 #endif
 
-#define SLEEP_TIME 60
+// the devicetree node identifier for the "led1_green" alias
+#define LED1_GREEN_NODE DT_ALIAS(led1_green)
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED1_GREEN_NODE, gpios);
 
-/*
- * Get a device structure from a devicetree node with compatible
- * "bosch,bme280". (If there are multiple, just pick one.)
- */
-static const struct device *get_bme280_device(void)
-{
-	const struct device *const dev = DEVICE_DT_GET_ANY(bosch_bme280);
+#if DT_NODE_HAS_STATUS(LED1_GREEN_NODE, okay)
+#define LED1_GREEN_PIN DT_GPIO_PIN(LED1_GREEN_NODE, gpios)
+#endif
 
-	if (dev == NULL) {
-		/* No such node, or the node does not have status "okay". */
-		#ifdef DEBUG 
-			LOG_ERR("\nError: no device found.\n");
-		#endif
-		return NULL;
-	}
+// the devicetree node identifier for our self-defined "pwr" alias.
+#define PWR_IO_NODE DT_ALIAS(pwr)
+static const struct gpio_dt_spec pwr = GPIO_DT_SPEC_GET(PWR_IO_NODE, gpios);
 
-	if (!device_is_ready(dev)) {
-		#ifdef DEBUG 
-			LOG_ERR("\nError: Device \"%s\" is not ready; "
-		       		"check the driver initialization logs for errors.\n",
-		       		dev->name);
-		#endif
-		return NULL;
-	}
+#if DT_NODE_HAS_STATUS(PWR_IO_NODE, okay)
+	#define PWR_IO_PIN DT_GPIO_PIN(PWR_IO_NODE, gpios)
+#endif
 
-	#ifdef DEBUG 
-		LOG_INF("Found device \"%s\", getting sensor data\n", dev->name);
-	#endif
-	return dev;
-}
+#define SLEEP_TIME 10
 
 //-----------------------------
 void udp_send(char *buf)
@@ -117,48 +104,54 @@ void main(void)
 	char json_buf[100];
 	int err;
 
-	uint8_t *eui64;
-	char *eui64_id[11];
+	uint8_t eui64[8];
+	char eui64_id[17];
+	char buf[3];
+
+	#ifdef DEBUG
+		err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_HIGH);
+		err = gpio_pin_set_dt(&led, 1);
+		k_sleep(K_MSEC(500));
+
+		const struct device *usbdev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+
+		if (usb_enable(NULL)) {
+			LOG_ERR("Failed to enable USB");
+			return;
+		}
+
+		err = gpio_pin_set_dt(&led, 0);
+		LOG_INF("--- ot-sensor-sed ---\n");
+	#endif
 
 	// fetch OpenThread instance and EUI64
 	otInstance *ot_instance;
 	ot_instance = openthread_get_default_instance();
 	otPlatRadioGetIeeeEui64(ot_instance, eui64);
-	snprintf(eui64_id, sizeof(eui64_id),
-			"0x%X\0",&eui64);
-
-	#ifdef DEBUG
-		const struct device *usbdev;
-		uint32_t baudrate, dtr = 0U;
-
-		usbdev = DEVICE_DT_GET_ONE(zephyr_cdc_acm_uart);
-		if (!device_is_ready(usbdev)) {
-			LOG_ERR("CDC ACM device not ready");
-			return;
-		}
-
-		ret = usb_enable(NULL);
-		if (ret != 0) {
-			LOG_ERR("Failed to enable USB");
-			return;
-		}
-	#endif
+	// convert EUI64 to hex string
+	for (int i=0; i < 8; i++) {
+		snprintf(buf, sizeof(buf),"%0X",eui64[i]);
+		strcat(eui64_id,buf);
+	}
 
 	//-----------------------------
-	// init sensor
+	// init SHT40 sensor
 	//-----------------------------
-	//err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_HIGH);
-	//err = gpio_pin_toggle_dt(&led);
-	k_sleep(K_SECONDS(1));
+	//err = gpio_pin_configure_dt(&pwr, GPIO_OUTPUT_HIGH|GPIO_OPEN_SOURCE);
+	err = gpio_pin_configure_dt(&pwr, GPIO_OUTPUT_HIGH);
+	err = gpio_pin_set_dt(&pwr, 1);
 
-	// BME280 sensor
-	const struct device *i2c_dev = get_bme280_device();
-	if (i2c_dev == NULL) {
+	const struct device *const sht = DEVICE_DT_GET_ANY(sensirion_sht4x);
+	k_sleep(K_MSEC(500));
+	
+	if (!device_is_ready(sht)) {
+		#ifdef DEBUG
+			LOG_ERR("Device %s is not ready.\n", sht->name);
+		#endif
 		return;
 	}
-	//err = gpio_pin_toggle_dt(&led);
 	#ifdef DEBUG
-		LOG_INF("BME280 Sensor started");
+		LOG_INF("SHT40 Sensor started");
 	#endif
 
 	//-----------------------------
@@ -169,28 +162,26 @@ void main(void)
 		//------------------------------------
 		// take measurement
 		//------------------------------------
-		struct sensor_value temp, press, humidity;
+		struct sensor_value temp, humidity;
 
-		sensor_sample_fetch(i2c_dev);
-		sensor_channel_get(i2c_dev, SENSOR_CHAN_AMBIENT_TEMP, &temp);
-		sensor_channel_get(i2c_dev, SENSOR_CHAN_PRESS, &press);
-		sensor_channel_get(i2c_dev, SENSOR_CHAN_HUMIDITY, &humidity);
-
-		#ifdef DEBUG
-			LOG_INF("temp: %d.%d; press: %d.%d; humidity: %d.%d",
-					temp.val1, temp.val2, press.val1, press.val2,
-					humidity.val1, humidity.val2);
-		#endif
+		if (sensor_sample_fetch(sht)) {
+			#ifdef DEBUG
+				LOG_ERR("Failed to fetch sample from SHT4X device\n");
+			#endif
+			return;
+		}
+		sensor_channel_get(sht, SENSOR_CHAN_AMBIENT_TEMP, &temp);
+		sensor_channel_get(sht, SENSOR_CHAN_HUMIDITY, &humidity);
 
 		//------------------------------------
 		// construct json message
 		//------------------------------------
 		snprintf(json_buf, sizeof(json_buf),
-			"{ \"id\": \"%s, \"temp\": %d.%d, \"press\": %d.%d, \"hum\": %d.%d }",
-			eui64_id, temp.val1, temp.val2, press.val1, press.val2, humidity.val1, humidity.val2);
+			"{ \"id\": \"%s\", \"temp\": %d.%d, \"hum\": %d.%d }",
+			eui64_id, temp.val1, temp.val2, humidity.val1, humidity.val2);
 
 		#ifdef DEBUG
-			LOG_INF("JSON message built");
+			LOG_INF("JSON message: %s",json_buf);
 		#endif
 
 		//------------------------------------
@@ -205,8 +196,8 @@ void main(void)
 		// go to sleep
 		//------------------------------------
 		// suspend BME280 sensor saves ca. 400µA
-		err = pm_device_action_run(i2c_dev, PM_DEVICE_ACTION_SUSPEND);
+		err = pm_device_action_run(sht, PM_DEVICE_ACTION_SUSPEND);
 		k_sleep(K_SECONDS(SLEEP_TIME));
-		err = pm_device_action_run(i2c_dev, PM_DEVICE_ACTION_RESUME);
+		err = pm_device_action_run(sht, PM_DEVICE_ACTION_RESUME);
 	}
 }

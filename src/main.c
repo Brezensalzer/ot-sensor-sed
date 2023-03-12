@@ -196,8 +196,14 @@ void main(void)
 		// go to sleep
 		//------------------------------------
 		// suspend BME280 sensor saves ca. 400µA
+		#ifdef DEBUG
+			err = pm_device_action_run(usbdev, PM_DEVICE_ACTION_SUSPEND);
+		#endif
 		err = pm_device_action_run(sht, PM_DEVICE_ACTION_SUSPEND);
 		k_sleep(K_SECONDS(SLEEP_TIME));
 		err = pm_device_action_run(sht, PM_DEVICE_ACTION_RESUME);
+		#ifdef DEBUG
+			err = pm_device_action_run(usbdev, PM_DEVICE_ACTION_RESUME);
+		#endif
 	}
 }

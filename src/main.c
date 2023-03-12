@@ -195,7 +195,7 @@ void main(void)
 		//------------------------------------
 		// go to sleep
 		//------------------------------------
-		// suspend BME280 sensor saves ca. 400µA
+		// suspend SHT40 sensor and USB
 		#ifdef DEBUG
 			err = pm_device_action_run(usbdev, PM_DEVICE_ACTION_SUSPEND);
 		#endif

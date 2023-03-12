@@ -46,7 +46,7 @@
 };
 
 // activating the i2c0 bus and define the
-// bme280 sensor in the device tree
+// sht40 sensor in the device tree
 &i2c0 {
 	compatible = "nordic,nrf-twi";
 	status = "okay";

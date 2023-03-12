@@ -124,15 +124,21 @@ void main(void)
 		LOG_INF("--- ot-sensor-sed ---\n");
 	#endif
 
+	//-------------------------------------
 	// fetch OpenThread instance and EUI64
+	//-------------------------------------
 	otInstance *ot_instance;
 	ot_instance = openthread_get_default_instance();
 	otPlatRadioGetIeeeEui64(ot_instance, eui64);
+
 	// convert EUI64 to hex string
 	for (int i=0; i < 8; i++) {
 		snprintf(buf, sizeof(buf),"%0X",eui64[i]);
 		strcat(eui64_id,buf);
 	}
+
+	// set TX power to +8dbm
+	err = otPlatRadioSetTransmitPower(ot_instance, 8);
 
 	//-----------------------------
 	// init SHT40 sensor
@@ -142,7 +148,6 @@ void main(void)
 	err = gpio_pin_set_dt(&pwr, 1);
 
 	const struct device *const sht = DEVICE_DT_GET_ANY(sensirion_sht4x);
-	k_sleep(K_MSEC(500));
 	
 	if (!device_is_ready(sht)) {
 		#ifdef DEBUG

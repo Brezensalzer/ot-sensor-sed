@@ -40,32 +40,7 @@ static const struct gpio_dt_spec led_blue = GPIO_DT_SPEC_GET(LED1_BLUE_NODE, gpi
 	#define LED1_GREEN_PIN DT_GPIO_PIN(LED1_BLUE_NODE, gpios)
 #endif
 
-// the devicetree node identifier for our self-defined "pwr" alias.
-#define PWR_IO_NODE DT_ALIAS(pwr)
-static const struct gpio_dt_spec pwr = GPIO_DT_SPEC_GET(PWR_IO_NODE, gpios);
-
-#if DT_NODE_HAS_STATUS(PWR_IO_NODE, okay)
-	#define PWR_IO_PIN DT_GPIO_PIN(PWR_IO_NODE, gpios)
-#endif
-
 #define SLEEP_TIME 10
-static bool ot_connected;
-
-static void on_ot_connect(struct k_work *item)
-{
-	int err;
-	ARG_UNUSED(item);
-	err = gpio_pin_configure_dt(&led_blue, GPIO_OUTPUT_HIGH);
-	err = gpio_pin_set_dt(&led_blue, 0);
-}
-
-static void on_ot_disconnect(struct k_work *item)
-{
-	int err;
-	ARG_UNUSED(item);
-	err = gpio_pin_configure_dt(&led_blue, GPIO_OUTPUT_HIGH);
-	err = gpio_pin_set_dt(&led_blue, 1);
-}
 
 //-----------------------------
 void udp_send(char *buf)
@@ -179,10 +154,6 @@ void main(void)
 	//-----------------------------
 	// init SHT40 sensor
 	//-----------------------------
-	//err = gpio_pin_configure_dt(&pwr, GPIO_OUTPUT_HIGH|GPIO_OPEN_SOURCE);
-	err = gpio_pin_configure_dt(&pwr, GPIO_OUTPUT_HIGH);
-	err = gpio_pin_set_dt(&pwr, 1);
-
 	const struct device *const sht = DEVICE_DT_GET_ANY(sensirion_sht4x);
 	
 	if (!device_is_ready(sht)) {

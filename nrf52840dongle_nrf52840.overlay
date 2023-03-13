@@ -4,19 +4,6 @@
 			zephyr,i2c = &i2c0;
 	};
 
-	// define pins to make them usable in zephyr programs
-	pins {
-		compatible = "gpio-keys";
-		pin02: pin_02 {
-			gpios = < &gpio0 2 (GPIO_ACTIVE_HIGH) >;
-			label = "Pin 0.02";
-		};
-	};
-
-	// the alias is used in the zephyr program
-	aliases {
-		pwr = &pin02; 
-	};
 }; 
 
 // Serial over USB

@@ -26,10 +26,18 @@
 
 // the devicetree node identifier for the "led1_green" alias
 #define LED1_GREEN_NODE DT_ALIAS(led1_green)
-static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED1_GREEN_NODE, gpios);
+static const struct gpio_dt_spec led_green = GPIO_DT_SPEC_GET(LED1_GREEN_NODE, gpios);
 
 #if DT_NODE_HAS_STATUS(LED1_GREEN_NODE, okay)
-#define LED1_GREEN_PIN DT_GPIO_PIN(LED1_GREEN_NODE, gpios)
+	#define LED1_GREEN_PIN DT_GPIO_PIN(LED1_GREEN_NODE, gpios)
+#endif
+
+// the devicetree node identifier for the "led1_blue" alias
+#define LED1_BLUE_NODE DT_ALIAS(led1_blue)
+static const struct gpio_dt_spec led_blue = GPIO_DT_SPEC_GET(LED1_BLUE_NODE, gpios);
+
+#if DT_NODE_HAS_STATUS(LED1_BLUE_NODE, okay)
+	#define LED1_GREEN_PIN DT_GPIO_PIN(LED1_BLUE_NODE, gpios)
 #endif
 
 // the devicetree node identifier for our self-defined "pwr" alias.
@@ -41,6 +49,23 @@ static const struct gpio_dt_spec pwr = GPIO_DT_SPEC_GET(PWR_IO_NODE, gpios);
 #endif
 
 #define SLEEP_TIME 10
+static bool ot_connected;
+
+static void on_ot_connect(struct k_work *item)
+{
+	int err;
+	ARG_UNUSED(item);
+	err = gpio_pin_configure_dt(&led_blue, GPIO_OUTPUT_HIGH);
+	err = gpio_pin_set_dt(&led_blue, 0);
+}
+
+static void on_ot_disconnect(struct k_work *item)
+{
+	int err;
+	ARG_UNUSED(item);
+	err = gpio_pin_configure_dt(&led_blue, GPIO_OUTPUT_HIGH);
+	err = gpio_pin_set_dt(&led_blue, 1);
+}
 
 //-----------------------------
 void udp_send(char *buf)
@@ -56,7 +81,7 @@ void udp_send(char *buf)
 	// prepare the message, target address and target port
 	otMessageInfo message_info;
 	memset(&message_info, 0, sizeof(message_info));
-	// ff03::1 is the IPv6 broadcast address
+	// ff03::1 is the IPv6 mesh local multicast address
 	otIp6AddressFromString("ff03::1", &message_info.mPeerAddr);
 	message_info.mPeerPort = 1234;
 
@@ -109,8 +134,8 @@ void main(void)
 	char buf[3];
 
 	#ifdef DEBUG
-		err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_HIGH);
-		err = gpio_pin_set_dt(&led, 1);
+		err = gpio_pin_configure_dt(&led_green, GPIO_OUTPUT_HIGH);
+		err = gpio_pin_set_dt(&led_green, 1);
 		k_sleep(K_MSEC(500));
 
 		const struct device *usbdev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
@@ -120,7 +145,7 @@ void main(void)
 			return;
 		}
 
-		err = gpio_pin_set_dt(&led, 0);
+		err = gpio_pin_set_dt(&led_green, 0);
 		LOG_INF("--- ot-sensor-sed ---\n");
 	#endif
 
@@ -139,6 +164,17 @@ void main(void)
 
 	// set TX power to +8dbm
 	err = otPlatRadioSetTransmitPower(ot_instance, 8);
+
+	// check if we are connected to a network
+	int device_state = otThreadGetDeviceRole(ot_instance);
+	while ((device_state == OT_DEVICE_ROLE_DETACHED)
+			||(device_state == OT_DEVICE_ROLE_DISABLED)) {
+		err = gpio_pin_configure_dt(&led_blue, GPIO_OUTPUT_HIGH);
+		err = gpio_pin_set_dt(&led_blue, 1);
+		k_sleep(K_MSEC(1000));
+		device_state = otThreadGetDeviceRole(ot_instance);
+	}
+	err = gpio_pin_set_dt(&led_blue, 0);
 
 	//-----------------------------
 	// init SHT40 sensor
@@ -190,10 +226,17 @@ void main(void)
 		#endif
 
 		//------------------------------------
-		// broadcast udp message
+		// broadcast udp message 
+		// -- only if we are connected
 		//------------------------------------
-		udp_send(json_buf);
-
+		if(OT_DEVICE_ROLE_CHILD == otThreadGetDeviceRole(ot_instance)) {
+			udp_send(json_buf);
+		}
+		else {
+			#ifdef DEBUG
+				LOG_ERR("not connected to a network, message not sent");
+			#endif
+		}
 		// clear json buffer
 		json_buf[0] = "\0";
 
